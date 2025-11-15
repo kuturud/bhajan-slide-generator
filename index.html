@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <title>Sai Bhajan Slide Generator</title>
+
+  <link rel="icon" href="images/favicon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="styles.css" />
+  <!-- jQuery + jQuery UI (sortable) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" />
+  <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js" crossorigin="anonymous"></script>
+  <!-- PptxGenJS -->
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar" role="banner">
+      <div class="topbar-inner">
+        <div class="brand">
+          <h1>Sai Bhajan Slide Generator</h1>
+          <p class="muted">Made by Ashvik Dubey</p>
+        </div>
+        <div class="header-actions" role="group" aria-label="Theme and generation">
+          <button id="themeCycle" class="btn" type="button">Theme: Auto</button>
+          <button id="generatePresentation" class="btn primary" type="button">Generate Powerpoint</button>
+        </div>
+      </div>
+    </header>
+
+    <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Progress: stays hidden until generating -->
+    <div id="generationProgress" class="progress-wrap" hidden>
+      <div class="progress-bar" role="progressbar" aria-label="Generation progress">
+        <div class="progress-fill"></div>
+      </div>
+      <div id="progressText" class="progress-text">Preparing…</div>
+    </div>
+
+    <main class="main" role="main">
+      <section class="card card-meta">
+        <div class="field-row">
+          <label class="field">Presentation Title
+            <input id="slideTitle" value="Central London Sai Centre" />
+          </label>
+          <label class="field">Subtitle (auto date)
+            <input id="slideSubtitle" value="" />
+          </label>
+        </div>
+      </section>
+
+      <section class="card card-workspace">
+        <div class="workspace-top">
+          <div class="workspace-controls">
+            <button id="addFillerSlide" class="btn" type="button">Add Filler Slide</button>
+            <input id="bhajan_to_add_id" class="id-input" placeholder="Bhajan id…" inputmode="numeric" aria-label="Bhajan id" />
+            <button id="addBhajanBtn" class="btn" type="button">Add by ID</button>
+            <button id="addNewBhajanBtn" class="btn" type="button">Add New Blank</button>
+          </div>
+        </div>
+        <table id="presentationIndex" class="table table-workspace">
+          <caption class="sr-only"></caption>
+          <thead>
+            <tr>
+              <th>Id</th>
+              <th>Title</th>
+              <th>Name</th>
+              <th>Gender</th>
+              <th>Key</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="sortable" class="ws-sortable"></tbody>
+        </table>
+      </section>
+
+      <section class="card card-prayers">
+        <div class="index-header">
+          <h2>Prayers Library</h2>
+          <div class="index-controls">
+            <input id="prayerSearch" class="search-input" placeholder="Search key or title…" />
+            <label class="limit-label">
+              <input id="prayerSearchLyrics" type="checkbox" /> Search text
+            </label>
+            <button id="clearPrayerSearch" class="btn" type="button">Clear</button>
+            <button id="prayerExpandAll" class="btn small-btn" type="button">Expand All</button>
+            <button id="prayerCollapseAll" class="btn small-btn" type="button">Collapse All</button>
+          </div>
+        </div>
+        <table id="prayersIndex" class="table table-index">
+          <thead><tr><th>Key</th><th>Title</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <section class="card card-index">
+        <div class="index-header">
+          <h2>Bhajan Library</h2>
+          <div class="index-controls">
+            <input id="bhajanSearch" class="search-input" placeholder="Search id or name…" />
+            <label class="limit-label">
+              <input id="bhajanSearchLyrics" type="checkbox" /> Search lyrics
+            </label>
+            <button id="clearBhajanSearch" class="btn" type="button">Clear</button>
+            <label class="limit-label">
+              Show
+              <select id="bhajanLimit" class="limit-select">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="all">All</option>
+              </select>
+            </label>
+            <button id="bhajanExpandAll" class="btn small-btn" type="button">Expand All</button>
+            <button id="bhajanCollapseAll" class="btn small-btn" type="button">Collapse All</button>
+          </div>
+        </div>
+        <table id="index" class="table table-index">
+          <thead><tr><th>Id</th><th>Name</th><th>Actions</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer class="footer muted">"Love All Serve All"</footer>
+  </div>
+
+  <script src="scripts.js"></script>
+</body>
+</html>
