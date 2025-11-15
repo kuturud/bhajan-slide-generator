@@ -1,11 +1,10 @@
 # Bhajan Slide Generator
 
-![GitHub stars](https://img.shields.io/github/stars/kuturud/bhajan-generator?style=social)
-![GitHub issues](https://img.shields.io/github/issues/kuturud/bhajan-generator)
+![GitHub stars](https://img.shields.io/github/stars/kuturud/bhajan-slide-generator?style=social)
+![GitHub issues](https://img.shields.io/github/issues/kuturud/bhajan-slide-generator)
 ![Tech Stack](https://img.shields.io/badge/tech-HTML%20%7C%20CSS%20%7C%20JavaScript-blue)
 
 **A modern, browser-based tool for creating beautiful PowerPoint presentations of bhajans and prayers with customizable backgrounds, layouts, and themes.**
-<img width="1280" height="997" alt="image" src="https://github.com/user-attachments/assets/67139cbf-92a1-4d2c-ac84-490c4c47d040" />
 
 ## ✨ Highlights
 
