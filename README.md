@@ -147,13 +147,14 @@ The app supports dark and light themes:
 
 Future enhancements under consideration:
 
-- **Pagination for Long Prayers**: Automatically split prayers longer than X lines across multiple slides
-- **Fixed-Size Typography**: Option to lock font sizes instead of auto-scaling
-- **Export/Import Setlists**: Save and load workspace configurations as JSON
-- **Tags/Categories**: Filter bhajans by deity, theme, or language
-- **Multi-language Support**: UI translations
-- **Slide Templates**: Additional layout options and color schemes
-- **Offline Support**: Service worker for offline functionality
+- [x] **Pagination for Long Prayers**: Automatically split prayers longer than X lines across multiple slides
+- [ ] **Multiple Slides Labelled**: Where there are multiple slides, they will be labelled as such
+- [ ] **Fixed-Size Typography**: Option to lock font sizes instead of auto-scaling
+- [ ] **Export/Import Setlists**: Save and load workspace configurations as JSON
+- [ ] **Tags/Categories**: Filter bhajans by deity, theme, or language
+- [ ] **Multi-language Support**: UI translations
+- [ ] **Slide Templates**: Additional layout options and color schemes
+- [ ] **Offline Support**: Service worker for offline functionality
 
 ## 🙏 Credits
 
