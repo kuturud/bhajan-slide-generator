@@ -550,9 +550,11 @@
               const s=pptx.addSlide();
               const bg=pickBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
 
+              // Header with slide number for multi-part prayers
               if(rowTitle){
-                const fit=fitFontOneLineBinary(rowTitle,'Calibri',SLIDE_W,HEADER_START_PT_PRAYER,HEADER_MIN_PT_PRAYER,{bold:true});
-                s.addText(rowTitle,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:HEADER_COLOR});
+                const headerText = parts.length > 1 ? `${rowTitle} (${p+1}/${parts.length})` : rowTitle;
+                const fit=fitFontOneLineBinary(headerText,'Calibri',SLIDE_W,HEADER_START_PT_PRAYER,HEADER_MIN_PT_PRAYER,{bold:true});
+                s.addText(headerText,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:HEADER_COLOR});
               }
 
               const seg=parts[p]||'';
@@ -564,7 +566,12 @@
                 s.addText('('+translation+')',{x:PR_LYRICS_X,y:PR_LYRICS_Y+PR_LYRICS_H+NOTE_Y_GAP,w:PR_LYRICS_W,h:1.05,align:'center',fontFace:'Calibri',fontSize:transPt,color:NOTE_COLOR,italic:true,wrap:true});
               }
 
-              const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo);
+              // Only show "Next" on the final slide of this prayer
+              if(p === parts.length - 1) {
+                const nextInfo=getNextInfo(rows,i); 
+                if(nextInfo) addNextFooter(s,nextInfo);
+              }
+
               progress++; updateProgress(progress,totalSlides); await maybeYield();
             }
             continue;
