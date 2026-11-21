@@ -36,6 +36,8 @@
   /* ============================= STATE ============================= */
   let backgroundsDataUrls=[]; let bgCycleIndex=0; const bgCache=new Map();
   let bhajansData=[], prayersData=[];
+  let generatedPptxBlob=null;
+  let generatedPptxUrl=null;
   const expandedBhajansKey='expandedBhajans', expandedPrayersKey='expandedPrayers';
   let expandedBhajans=new Set(JSON.parse(localStorage.getItem(expandedBhajansKey)||'[]'));
   let expandedPrayers=new Set(JSON.parse(localStorage.getItem(expandedPrayersKey)||'[]'));
@@ -75,6 +77,45 @@
     const txt=document.getElementById('progressText'); if(txt) txt.textContent=`Generating… (${current}/${total})`;
   }
   function hideProgress(){ const wrap=document.getElementById('generationProgress'); if(wrap) wrap.hidden=true; }
+  function setDownloadFallback(blob){
+    if(generatedPptxUrl){
+      URL.revokeObjectURL(generatedPptxUrl);
+      generatedPptxUrl=null;
+    }
+    generatedPptxBlob=blob;
+    generatedPptxUrl=URL.createObjectURL(blob);
+    const btn=document.getElementById('downloadPresentation');
+    if(btn){
+      btn.hidden=false;
+      btn.disabled=false;
+      btn.textContent='Download PPTX';
+    }
+  }
+  function hideDownloadFallback(){
+    if(generatedPptxUrl){
+      URL.revokeObjectURL(generatedPptxUrl);
+      generatedPptxUrl=null;
+    }
+    generatedPptxBlob=null;
+    const btn=document.getElementById('downloadPresentation');
+    if(btn){
+      btn.hidden=true;
+      btn.disabled=true;
+      btn.textContent='Preparing PPTX…';
+    }
+  }
+  function downloadGeneratedPptx(){
+    if(!generatedPptxBlob || !generatedPptxUrl){
+      showToast('PPTX is not ready yet','error',4200);
+      return;
+    }
+    const link=document.createElement('a');
+    link.href=generatedPptxUrl;
+    link.download='presentation.pptx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
   function setGenerateBusy(isBusy){
     const btn=document.getElementById('generatePresentation');
     if(!btn) return;
@@ -476,6 +517,7 @@
     const btn=document.getElementById('generatePresentation');
     if(!btn || btn.hasAttribute('aria-busy')) return;
     setGenerateBusy(true);
+    hideDownloadFallback();
 
     try{
       if(typeof PptxGenJS==='undefined'){
@@ -608,11 +650,31 @@
       }
 
       try{
-        await pptx.writeFile({ fileName:'presentation.pptx' });
+        const fallbackBtn=document.getElementById('downloadPresentation');
+        if(fallbackBtn){
+          fallbackBtn.hidden=false;
+          fallbackBtn.disabled=true;
+          fallbackBtn.textContent='Preparing PPTX…';
+        }
+
+        const output=await pptx.write({outputType:'blob'});
+        if(!(output instanceof Blob)){
+          throw new Error('PptxGenJS did not return a Blob');
+        }
+
+        setDownloadFallback(output);
+        downloadGeneratedPptx();
         showToast('Presentation generated','success',1600);
       }catch(err){
         console.error('[BhajanGen] save error',err);
-        showToast('Save failed — see console','error',4200);
+        const message=`PPTX export failed: ${err?.message || String(err)}`;
+        showToast(message,'error',7000);
+        const fallbackBtn=document.getElementById('downloadPresentation');
+        if(fallbackBtn){
+          fallbackBtn.hidden=false;
+          fallbackBtn.disabled=true;
+          fallbackBtn.textContent='PPTX export failed';
+        }
       }
     } catch(err){
       console.error('[BhajanGen] generation fatal',err);
@@ -688,6 +750,7 @@
     if(t.id==='clearBhajanSearch'){ const el=document.getElementById('bhajanSearch'); if(el){ el.value=''; renderBhajanIndex(); el.focus(); } }
     if(t.id==='clearPrayerSearch'){ const el=document.getElementById('prayerSearch'); if(el){ el.value=''; renderPrayerIndex(); el.focus(); } }
     if(t.id==='generatePresentation'){ generatePresentation(); }
+    if(t.id==='downloadPresentation'){ downloadGeneratedPptx(); }
   });
 
   document.getElementById('bhajanSearch')?.addEventListener('input',debounce(renderBhajanIndex,140));
