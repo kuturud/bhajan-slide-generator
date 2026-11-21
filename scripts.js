@@ -607,8 +607,25 @@
         progress++; updateProgress(progress,totalSlides); await maybeYield();
       }
 
+      const progressText=document.getElementById('progressText');
+      if(progressText) progressText.textContent=`Finalizing presentation… (${progress}/${totalSlides})`;
+
       try{
-        await pptx.writeFile({ fileName:'presentation.pptx' });
+        let output=await pptx.write({outputType:'blob'});
+        if(!(output instanceof Blob)){
+          output=await pptx.write({outputType:'arraybuffer'});
+          output=new Blob([output],{type:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+        }
+
+        const url=URL.createObjectURL(output);
+        const link=document.createElement('a');
+        link.href=url;
+        link.download='presentation.pptx';
+        link.style.display='none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(()=>URL.revokeObjectURL(url),60000);
         showToast('Presentation generated','success',1600);
       }catch(err){
         console.error('[BhajanGen] save error',err);
