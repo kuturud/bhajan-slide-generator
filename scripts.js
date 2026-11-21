@@ -649,6 +649,9 @@
         progress++; updateProgress(progress,totalSlides); await maybeYield();
       }
 
+      const progressText=document.getElementById('progressText');
+      if(progressText) progressText.textContent=`Finalizing presentation… (${progress}/${totalSlides})`;
+
       try{
         const fallbackBtn=document.getElementById('downloadPresentation');
         if(fallbackBtn){
