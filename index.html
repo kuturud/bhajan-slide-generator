@@ -49,6 +49,22 @@
           <label class="field">Subtitle (auto date)
             <input id="slideSubtitle" value="" />
           </label>
+          <label class="field">Background Theme
+            <select id="backgroundTheme">
+              <option value="default">Default (Rotating)</option>
+            </select>
+          </label>
+          <label class="field">Text Color
+            <select id="textColorMode">
+              <option value="auto">Auto (Contrast)</option>
+              <option value="light">Light Text</option>
+              <option value="dark">Dark Text</option>
+            </select>
+          </label>
+        </div>
+        <div class="theme-preview-row">
+          <div id="themePreview" class="theme-preview" aria-label="Selected background preview"></div>
+          <span id="themePreviewLabel" class="muted tiny">Default (Rotating)</span>
         </div>
       </section>
 
@@ -81,6 +97,10 @@
         <div class="index-header">
           <h2>Prayers Library</h2>
           <div class="index-controls">
+            <label class="limit-label">
+              <input id="includePrayerTranslation" type="checkbox" />
+              Include Meaning / Translation
+            </label>
             <input id="prayerSearch" class="search-input" placeholder="Search key or title…" />
             <label class="limit-label">
               <input id="prayerSearchLyrics" type="checkbox" /> Search text

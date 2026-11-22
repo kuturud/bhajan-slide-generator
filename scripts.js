@@ -34,7 +34,7 @@
   ];
 
   /* ============================= STATE ============================= */
-  let backgroundsDataUrls=[]; let bgCycleIndex=0; const bgCache=new Map();
+  let backgroundsDataUrls=[]; let themeBackgrounds=[]; let bgCycleIndex=0; const bgCache=new Map();
   let bhajansData=[], prayersData=[];
   let generatedPptxBlob=null;
   let generatedPptxUrl=null;
@@ -302,22 +302,112 @@
     }catch(e){ console.warn('[BhajanGen] bg fetch fail',url,e.message||e); return null; }
   }
   async function prefetchBackgrounds(){
-    if(backgroundsDataUrls.length) return; // already prefetched
-    backgroundsDataUrls=[]; bgCycleIndex=0;
-    if(location.protocol==='file:'){ return; }
+    if(backgroundsDataUrls.length && themeBackgrounds.length) return;
+    backgroundsDataUrls=[]; themeBackgrounds=[]; bgCycleIndex=0;
+    if(location.protocol==='file:') return;
     const base=window.location.href;
     const pushIf=async url=>{ const d=await ensureDataUrl(url); if(d) backgroundsDataUrls.push({url,data:d}); };
-    await pushIf(new URL(`${IMAGE_DIR}/${IMAGE_BASE}1${IMAGE_EXT}`,base).href);
-    for(let i=2;i<=MAX_BG_CANDIDATES;i++){
+    for(let i=1;i<=10;i++){
       await pushIf(new URL(`${IMAGE_DIR}/${IMAGE_BASE}${i}${IMAGE_EXT}`,base).href);
     }
+    for(let i=1;i<=MAX_BG_CANDIDATES;i++){
+      const url=new URL(`${IMAGE_DIR}/theme${i}${IMAGE_EXT}`,base).href;
+      const d=await ensureDataUrl(url);
+      if(d) themeBackgrounds.push({value:`theme${i}`,label:`Theme ${i}`,url,data:d});
+    }
   }
-  function pickBackgroundDataUrl(isTitle=false){
+  function populateThemeSelector(){
+    const select=document.getElementById('backgroundTheme');
+    if(!select) return;
+    const saved=localStorage.getItem('bhajan_background_theme')||'default';
+    select.innerHTML='<option value="default">Default (Rotating)</option>';
+    for(const theme of themeBackgrounds){
+      const option=document.createElement('option');
+      option.value=theme.value;
+      option.textContent=theme.label;
+      select.appendChild(option);
+    }
+    select.value=themeBackgrounds.some(t=>t.value===saved)?saved:'default';
+  }
+  function getSelectedTheme(){
+    const value=document.getElementById('backgroundTheme')?.value||localStorage.getItem('bhajan_background_theme')||'default';
+    return themeBackgrounds.find(theme=>theme.value===value)||null;
+  }
+  function updateThemePreview(){
+    const preview=document.getElementById('themePreview');
+    const label=document.getElementById('themePreviewLabel');
+    const theme=getSelectedTheme();
+    const selected=theme?.data||backgroundsDataUrls[0]?.data||null;
+    if(preview){
+      preview.style.backgroundImage=selected?`url("${selected}")`:'none';
+    }
+    if(label){
+      label.textContent=theme?.label||'Default (Rotating)';
+    }
+  }
+  function pickRotatingBackgroundDataUrl(){
     if(!backgroundsDataUrls.length) return null;
-    if(isTitle) return backgroundsDataUrls[0].data;
-    if(backgroundsDataUrls.length===1) return backgroundsDataUrls[0].data;
-    const idx=1+(bgCycleIndex % (backgroundsDataUrls.length-1));
-    bgCycleIndex++; return backgroundsDataUrls[idx].data;
+    const idx=bgCycleIndex % backgroundsDataUrls.length;
+    bgCycleIndex=(bgCycleIndex+1)%backgroundsDataUrls.length;
+    return backgroundsDataUrls[idx].data;
+  }
+  function pickSlideBackgroundDataUrl(isSpecial=false){
+    if(isSpecial) return pickRotatingBackgroundDataUrl();
+    const selected=getSelectedTheme();
+    if(selected) return selected.data;
+    return pickRotatingBackgroundDataUrl();
+  }
+
+  const CONTRAST_CACHE=new Map();
+  function getTextColorMode(){
+    return document.getElementById('textColorMode')?.value||localStorage.getItem('bhajan_text_color')||'auto';
+  }
+  async function getAdaptiveTextColor(dataUrl){
+    const mode=getTextColorMode();
+    if(mode==='light') return {text:'FFFDF5',backdrop:'000000',backdropTransparency:42};
+    if(mode==='dark') return {text:'1F2933',backdrop:'FFFFFF',backdropTransparency:55};
+    if(!dataUrl) return {text:'FFFFFF',backdrop:'000000',backdropTransparency:45};
+    if(CONTRAST_CACHE.has(dataUrl)) return CONTRAST_CACHE.get(dataUrl);
+    const result=await new Promise(resolve=>{
+      const image=new Image();
+      image.onload=()=>{
+        try{
+          const canvas=document.createElement('canvas');
+          const ctx=canvas.getContext('2d',{willReadFrequently:true});
+          canvas.width=180; canvas.height=102;
+          ctx.drawImage(image,0,0,canvas.width,canvas.height);
+          const cx=canvas.width*0.20, cy=canvas.height*0.20;
+          const cw=canvas.width*0.60, ch=canvas.height*0.60;
+          const pixels=ctx.getImageData(cx,cy,cw,ch).data;
+          let total=0, count=0;
+          for(let i=0;i<pixels.length;i+=16){
+            const r=pixels[i], g=pixels[i+1], b=pixels[i+2];
+            total+=(0.2126*r+0.7152*g+0.0722*b)/255;
+            count++;
+          }
+          const luminance=count?total/count:0.5;
+          const contrast=luminance<0.58
+            ?{text:'FFFDF5',backdrop:'000000',backdropTransparency:42}
+            :{text:'1F2933',backdrop:'FFFFFF',backdropTransparency:55};
+          CONTRAST_CACHE.set(dataUrl,contrast);
+          resolve(contrast);
+        }catch(e){
+          resolve({text:'FFFFFF',backdrop:'000000',backdropTransparency:45});
+        }
+      };
+      image.onerror=()=>resolve({text:'FFFFFF',backdrop:'000000',backdropTransparency:45});
+      image.src=dataUrl;
+    });
+    CONTRAST_CACHE.set(dataUrl,result);
+    return result;
+  }
+  function addAdaptiveBackdrop(pptx,s,x,y,w,h,contrast,transparencyScale=1){
+    if(!s || !pptx?.ShapeType) return;
+    s.addShape(pptx.ShapeType.rect,{
+      x,y,w,h,
+      fill:{color:contrast.backdrop,transparency:Math.round(contrast.backdropTransparency*transparencyScale)},
+      line:{color:contrast.backdrop,transparency:100}
+    });
   }
 
   /* ============================= RENDER LIBRARIES ============================= */
@@ -479,13 +569,13 @@
   }
 
   /* ============================= HEADER / FOOTER HELPERS ============================= */
-  function buildBhajanHeaderRuns(title,name,gender,key,pt){
+  function buildBhajanHeaderRuns(title,name,gender,key,pt,textColor){
     const runs=[];
-    if(title) runs.push({ text:title+(name||gender||key?' ':'') , options:{fontSize:pt,color:HEADER_COLOR,bold:true} });
-    if(name)  runs.push({ text:name+(gender||key?' ':'')  , options:{fontSize:pt,color:NAME_COLOR ,bold:true} });
-    if(gender)runs.push({ text:`(${gender})`+(key?' ':'')   , options:{fontSize:pt,color:HEADER_COLOR,bold:true} });
-    if(key)   runs.push({ text:key                         , options:{fontSize:pt,color:HEADER_COLOR,bold:true} });
-    if(!runs.length) runs.push({ text:'', options:{fontSize:pt,color:HEADER_COLOR} });
+    if(title) runs.push({ text:title+(name||gender||key?' ':'') , options:{fontSize:pt,color:textColor,bold:true} });
+    if(name)  runs.push({ text:name+(gender||key?' ':'')  , options:{fontSize:pt,color:textColor,bold:true} });
+    if(gender)runs.push({ text:`(${gender})`+(key?' ':'')   , options:{fontSize:pt,color:textColor,bold:true} });
+    if(key)   runs.push({ text:key                         , options:{fontSize:pt,color:textColor,bold:true} });
+    if(!runs.length) runs.push({ text:'', options:{fontSize:pt,color:textColor} });
     return runs;
   }
   function getNextInfo(rows,currentIndex){
@@ -499,16 +589,20 @@
     }
     return null;
   }
-  function addNextFooter(s,nextInfo){
+  function addNextFooter(s,nextInfo,contrast=null){
+    const color=contrast?.text||HEADER_COLOR;
+    s.addShape?.('rect',{x:0.15,y:FOOTER_Y-0.05,w:SLIDE_W-0.30,h:0.48,
+      fill:{color:(contrast?.backdrop||'000000'),transparency:(contrast?.backdropTransparency||45)},
+      line:{color:(contrast?.backdrop||'000000'),transparency:100}});
     // Left: Next
-    s.addText('Next',{x:0.3,y:FOOTER_Y,w:1.2,h:0.4,fontFace:'Calibri',fontSize:NEXT_LABEL_FONT_SIZE,color:NEXT_LABEL_COLOR,align:'left'});
+    s.addText('Next',{x:0.3,y:FOOTER_Y,w:1.2,h:0.4,fontFace:'Calibri',fontSize:NEXT_LABEL_FONT_SIZE,color:color,align:'left'});
     // Center: Title
     if(nextInfo?.title){
-      s.addText(nextInfo.title,{x:SLIDE_W/2 - 2.2,y:FOOTER_Y,w:4.4,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:HEADER_COLOR,align:'center'});
+      s.addText(nextInfo.title,{x:SLIDE_W/2 - 2.2,y:FOOTER_Y,w:4.4,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'center'});
     }
-    // Right: Name (blue)
+    // Right: Name
     if(nextInfo?.name){
-      s.addText(nextInfo.name,{x:SLIDE_W - 2.3,y:FOOTER_Y,w:2.0,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:NAME_COLOR,align:'right'});
+      s.addText(nextInfo.name,{x:SLIDE_W - 2.3,y:FOOTER_Y,w:2.0,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'right'});
     }
   }
 
@@ -529,6 +623,7 @@
 
       const slideTitle=(document.getElementById('slideTitle')?.value||'').trim()||'Central London Sai Centre';
       const subEl=document.getElementById('slideSubtitle'); const subtitle=(subEl?.value||'').trim()||formatToday(); if(subEl) subEl.value=subtitle;
+      const includeTranslation=!!document.getElementById('includePrayerTranslation')?.checked;
       const rows=Array.from(document.querySelectorAll('#sortable tr'));
 
       // Calculate total slides using canonical prayer data
@@ -554,12 +649,15 @@
       // Title slide
       try{
         const s=pptx.addSlide();
-        const bg=pickBackgroundDataUrl(true);
+        const bg=pickSlideBackgroundDataUrl(true);
         if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+        const contrast=await getAdaptiveTextColor(bg);
         const centerY=SLIDE_H/2, titleMid=centerY-CENTER_OFFSET, subMid=centerY+CENTER_OFFSET;
         const titleY=titleMid-(TITLE_BOX_HEIGHT/2), subY=subMid-(SUBTITLE_BOX_HEIGHT/2);
-        s.addText(slideTitle,{x:0,y:titleY,w:SLIDE_W,h:TITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:TITLE_FONT_SIZE,bold:true,color:TITLE_COLOR});
-        s.addText(subtitle,{x:0,y:subY,w:SLIDE_W,h:SUBTITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:SUBTITLE_FONT_SIZE,color:SUBTITLE_COLOR});
+        addAdaptiveBackdrop(pptx,s,0.45,titleY,SLIDE_W-0.9,TITLE_BOX_HEIGHT,contrast,0.55);
+        addAdaptiveBackdrop(pptx,s,0.75,subY,SLIDE_W-1.5,SUBTITLE_BOX_HEIGHT,contrast,0.55);
+        s.addText(slideTitle,{x:0,y:titleY,w:SLIDE_W,h:TITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:TITLE_FONT_SIZE,bold:true,color:contrast.text});
+        s.addText(subtitle,{x:0,y:subY,w:SLIDE_W,h:SUBTITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:SUBTITLE_FONT_SIZE,bold:true,color:contrast.text});
       }catch(err){ console.error('[BhajanGen] title slide error',err); }
       progress++; updateProgress(progress,totalSlides);
 
@@ -573,10 +671,12 @@
         let workspaceLyrics=normalizeLyrics(tr.querySelector('input[name="lyrics"]')?.value||'');
 
         try{
-          if(rawId==='-1'){
+          if(rawId==='-1'||rawId==='0'){
             const s=pptx.addSlide();
-            const bg=pickBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
-            const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo);
+            const bg=pickSlideBackgroundDataUrl(true); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+            const contrast=await getAdaptiveTextColor(bg);
+            addAdaptiveBackdrop(pptx,s,0.55,2.15,8.9,1.0,contrast,0.50);
+            const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo,contrast);
             progress++; updateProgress(progress,totalSlides); await maybeYield(); continue;
           }
 
@@ -590,28 +690,37 @@
 
             for(let p=0;p<parts.length;p++){
               const s=pptx.addSlide();
-              const bg=pickBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+              const bg=pickSlideBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+              const contrast=await getAdaptiveTextColor(bg);
 
               // Header with slide number for multi-part prayers
               if(rowTitle){
                 const headerText = parts.length > 1 ? `${rowTitle} (${p+1}/${parts.length})` : rowTitle;
                 const fit=fitFontOneLineBinary(headerText,'Calibri',SLIDE_W,HEADER_START_PT_PRAYER,HEADER_MIN_PT_PRAYER,{bold:true});
-                s.addText(headerText,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:HEADER_COLOR});
+                addAdaptiveBackdrop(pptx,s,0.25,HEADER_TOP_Y,SLIDE_W-0.5,HEADER_H,contrast,0.62);
+                s.addText(headerText,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:contrast.text});
               }
 
               const seg=parts[p]||'';
-              const lyricsFit=fitFontBinary(seg,'Calibri',PR_LYRICS_W,PR_LYRICS_H,PR_LYRICS_BASE_PT,PR_LYRICS_MIN_PT,{lineGap:1.22});
-              s.addText(seg,{x:PR_LYRICS_X,y:PR_LYRICS_Y,w:PR_LYRICS_W,h:PR_LYRICS_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:lyricsFit.pt,color:LYRICS_COLOR,wrap:true});
+              const showTranslation=includeTranslation && p===parts.length-1 && !!translation;
+              const lyricsHeight=showTranslation?1.95:PR_LYRICS_H;
+              const lyricsFit=fitFontBinary(seg,'Calibri',PR_LYRICS_W,lyricsHeight,PR_LYRICS_BASE_PT,PR_LYRICS_MIN_PT,{lineGap:1.22});
+              addAdaptiveBackdrop(pptx,s,0.35,PR_LYRICS_Y,PR_LYRICS_W-0.70,lyricsHeight,contrast,0.42);
+              s.addText(seg,{x:PR_LYRICS_X,y:PR_LYRICS_Y,w:PR_LYRICS_W,h:lyricsHeight,align:'center',valign:'top',fontFace:'Calibri',fontSize:lyricsFit.pt,color:contrast.text,wrap:true});
 
-              if(p===parts.length-1 && translation){
+              if(showTranslation){
                 const transPt=Math.max(14, lyricsFit.pt-14);
-                s.addText('('+translation+')',{x:PR_LYRICS_X,y:PR_LYRICS_Y+PR_LYRICS_H+NOTE_Y_GAP,w:PR_LYRICS_W,h:1.05,align:'center',fontFace:'Calibri',fontSize:transPt,color:NOTE_COLOR,italic:true,wrap:true});
+                const transY=PR_LYRICS_Y+lyricsHeight+NOTE_Y_GAP;
+                const transH=Math.max(0.65,PR_LYRICS_Y+PR_LYRICS_H-transY);
+                const transFit=fitFontBinary('('+translation+')','Calibri',PR_LYRICS_W,transH,transPt,12,{lineGap:1.18,italic:true});
+                addAdaptiveBackdrop(pptx,s,0.45,transY,PR_LYRICS_W-0.90,transH,contrast,0.48);
+                s.addText('('+translation+')',{x:PR_LYRICS_X,y:transY,w:PR_LYRICS_W,h:transH,align:'center',fontFace:'Calibri',fontSize:transFit.pt,color:contrast.text,italic:true,wrap:true});
               }
 
               // Only show "Next" on the final slide of this prayer
               if(p === parts.length - 1) {
                 const nextInfo=getNextInfo(rows,i); 
-                if(nextInfo) addNextFooter(s,nextInfo);
+                if(nextInfo) addNextFooter(s,nextInfo,contrast);
               }
 
               progress++; updateProgress(progress,totalSlides); await maybeYield();
@@ -625,26 +734,30 @@
             if(found) workspaceLyrics=found.lyrics||'';
           }
           const s=pptx.addSlide();
-          const bg=pickBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+          const bg=pickSlideBackgroundDataUrl(false); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
+          const contrast=await getAdaptiveTextColor(bg);
 
           const headerStr=[rowTitle,personName||'',gender?`(${gender})`:'',keyField||''].filter(Boolean).join(' ');
           const headerFit=fitFontOneLineBinary(headerStr,'Calibri',SLIDE_W,HEADER_START_PT_BHAJAN,HEADER_MIN_PT_BHAJAN,{bold:true});
-          const headerRuns=buildBhajanHeaderRuns(rowTitle,personName,gender,keyField,headerFit.pt);
-          s.addText(headerRuns,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri'});
+          const headerRuns=buildBhajanHeaderRuns(rowTitle,personName,gender,keyField,headerFit.pt,contrast.text);
+          addAdaptiveBackdrop(pptx,s,0.25,HEADER_TOP_Y,SLIDE_W-0.5,HEADER_H,contrast,0.62);
+          s.addText(headerRuns,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',color:contrast.text});
 
           const {main:mRaw,note:bNote}=extractTrailingNote(workspaceLyrics||'');
           const main=formatVerses(mRaw||'');
           const mainFit=fitFontBinary(main,'Calibri',BH_LYRICS_W,BH_LYRICS_H,BH_LYRICS_BASE_PT,BH_LYRICS_MIN_PT,{lineGap:1.22});
-          s.addText(main,{x:BH_LYRICS_X,y:BH_LYRICS_Y,w:BH_LYRICS_W,h:BH_LYRICS_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:mainFit.pt,color:LYRICS_COLOR,wrap:true});
+          addAdaptiveBackdrop(pptx,s,0.35,BH_LYRICS_Y,BH_LYRICS_W-0.70,BH_LYRICS_H,contrast,0.42);
+          s.addText(main,{x:BH_LYRICS_X,y:BH_LYRICS_Y,w:BH_LYRICS_W,h:BH_LYRICS_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:mainFit.pt,color:contrast.text,wrap:true});
 
           if(bNote){
             const noteY=Math.min(FOOTER_Y-0.9,BH_LYRICS_Y+BH_LYRICS_H+0.25);
             const availH=Math.max(0.6,(FOOTER_Y-0.22)-noteY);
             const notePt=Math.max(14,mainFit.pt-6);
-            s.addText('('+bNote+')',{x:BH_LYRICS_X,y:noteY,w:BH_LYRICS_W,h:availH,align:'center',fontFace:'Calibri',fontSize:notePt,color:NOTE_COLOR,italic:true,wrap:true});
+            addAdaptiveBackdrop(pptx,s,0.45,noteY,BH_LYRICS_W-0.90,availH,contrast,0.48);
+            s.addText('('+bNote+')',{x:BH_LYRICS_X,y:noteY,w:BH_LYRICS_W,h:availH,align:'center',fontFace:'Calibri',fontSize:notePt,color:contrast.text,italic:true,wrap:true});
           }
 
-          const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo);
+          const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo,contrast);
         }catch(err){ console.error('[BhajanGen] slide error idx',i,err); }
         progress++; updateProgress(progress,totalSlides); await maybeYield();
       }
@@ -761,6 +874,16 @@
   document.getElementById('bhajanSearchLyrics')?.addEventListener('change',renderBhajanIndex);
   document.getElementById('prayerSearchLyrics')?.addEventListener('change',renderPrayerIndex);
   document.getElementById('bhajanLimit')?.addEventListener('change',renderBhajanIndex);
+  document.getElementById('backgroundTheme')?.addEventListener('change',e=>{
+    localStorage.setItem('bhajan_background_theme',e.target.value);
+    updateThemePreview();
+  });
+  document.getElementById('textColorMode')?.addEventListener('change',e=>{
+    localStorage.setItem('bhajan_text_color',e.target.value);
+  });
+  document.getElementById('includePrayerTranslation')?.addEventListener('change',e=>{
+    localStorage.setItem('bhajan_include_prayer_translation',e.target.checked?'true':'false');
+  });
   document.getElementById('bhajanSearch')?.addEventListener('keydown',function(e){
     if(e.key==='Enter'){
       e.preventDefault();
@@ -779,6 +902,17 @@
   /* ============================= INIT ============================= */
   document.addEventListener('DOMContentLoaded', async ()=>{
     initTheme();
+    await prefetchBackgrounds();
+    populateThemeSelector();
+    updateThemePreview();
+    const translationToggle=document.getElementById('includePrayerTranslation');
+    if(translationToggle){
+      translationToggle.checked=localStorage.getItem('bhajan_include_prayer_translation')==='true';
+    }
+    const textColor=document.getElementById('textColorMode');
+    if(textColor){
+      textColor.value=localStorage.getItem('bhajan_text_color')||'auto';
+    }
     restoreWorkspace();
     await autoLoad();
     renderBhajanIndex();

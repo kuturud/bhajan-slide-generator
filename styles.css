@@ -48,6 +48,12 @@ body{
 .field-row{display:flex;flex-wrap:wrap;gap:14px}
 .field{display:flex;flex-direction:column;gap:6px;min-width:220px;flex:1}
 .field input{padding:10px 12px;border:1px solid var(--table-border);border-radius:10px;background:var(--input-bg);color:var(--text)}
+.field select{padding:10px 12px;border:1px solid var(--table-border);border-radius:10px;background:var(--input-bg);color:var(--text)}
+.theme-preview-row{display:flex;align-items:center;gap:12px;margin-top:14px}
+.theme-preview{
+  width:240px;aspect-ratio:16/9;border-radius:10px;border:1px solid var(--table-border);
+  background:#111 center/cover no-repeat;box-shadow:0 4px 14px rgba(0,0,0,.18)
+}
 
 /* Buttons */
 .btn{padding:8px 14px;border-radius:10px;border:none;background:var(--btn-bg);color:var(--text);cursor:pointer;font-weight:600;transition:background .15s, transform .12s}
