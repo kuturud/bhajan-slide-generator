@@ -54,8 +54,6 @@ body{
   width:240px;aspect-ratio:16/9;border-radius:10px;border:1px solid var(--table-border);
   background:#111 center/cover no-repeat;box-shadow:0 4px 14px rgba(0,0,0,.18);position:relative
 }
-  .theme-preview::before{content:'Prayer Text Preview';position:absolute;z-index:2;left:20%;top:39%;width:60%;text-align:center;font-size:.8rem;font-weight:700;color:var(--preview-text,#fff);text-shadow:0 1px 3px rgba(0,0,0,.85);pointer-events:none}
-.theme-preview::after{content:'';position:absolute;z-index:1;left:18%;top:32%;width:64%;height:36%;border-radius:6px;background:var(--preview-backdrop,#000);opacity:var(--preview-opacity,.42);pointer-events:none}
 .meaning-toggle{display:inline-flex;align-items:center;gap:5px;margin-right:8px;white-space:nowrap;font-size:.82rem}
 .meaning-toggle input{margin:0}
 

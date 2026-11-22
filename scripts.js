@@ -334,17 +334,13 @@
     const value=document.getElementById('backgroundTheme')?.value||localStorage.getItem('bhajan_background_theme')||'default';
     return themeBackgrounds.find(theme=>theme.value===value)||null;
   }
-  async function updateThemePreview(){
+  function updateThemePreview(){
     const preview=document.getElementById('themePreview');
     const label=document.getElementById('themePreviewLabel');
     const theme=getSelectedTheme();
     const selected=theme?.data||backgroundsDataUrls[0]?.data||null;
     if(preview){
       preview.style.backgroundImage=selected?`url("${selected}")`:'none';
-      const contrast=await getAdaptiveTextColor(selected);
-      preview.style.setProperty('--preview-backdrop',contrast.backdrop);
-      preview.style.setProperty('--preview-opacity',String(contrast.backdropTransparency/100));
-      preview.style.setProperty('--preview-text','#'+contrast.text);
     }
     if(label){
       label.textContent=theme?.label||'Default (Rotating)';
@@ -369,9 +365,9 @@
   }
   async function getAdaptiveTextColor(dataUrl){
     const mode=getTextColorMode();
-    if(mode==='light') return {text:'FFFDF5',backdrop:'000000',backdropTransparency:42};
-    if(mode==='dark') return {text:'1F2933',backdrop:'FFFFFF',backdropTransparency:55};
-    if(!dataUrl) return {text:'FFFFFF',backdrop:'000000',backdropTransparency:45};
+    if(mode==='light') return {text:'FFFDF5'};
+    if(mode==='dark') return {text:'1F2933'};
+    if(!dataUrl) return {text:'FFFFFF'};
     if(CONTRAST_CACHE.has(dataUrl)) return CONTRAST_CACHE.get(dataUrl);
     const result=await new Promise(resolve=>{
       const image=new Image();
@@ -392,29 +388,20 @@
           }
           const luminance=count?total/count:0.5;
           const contrast=luminance<0.58
-            ?{text:'FFFDF5',backdrop:'000000',backdropTransparency:42}
-            :{text:'1F2933',backdrop:'FFFFFF',backdropTransparency:55};
+            ?{text:'FFFDF5'}
+            :{text:'1F2933'};
           CONTRAST_CACHE.set(dataUrl,contrast);
           resolve(contrast);
         }catch(e){
-          resolve({text:'FFFFFF',backdrop:'000000',backdropTransparency:45});
+          resolve({text:'FFFFFF'});
         }
       };
-      image.onerror=()=>resolve({text:'FFFFFF',backdrop:'000000',backdropTransparency:45});
+      image.onerror=()=>resolve({text:'FFFFFF'});
       image.src=dataUrl;
     });
     CONTRAST_CACHE.set(dataUrl,result);
     return result;
   }
-  function addAdaptiveBackdrop(pptx,s,x,y,w,h,contrast,transparencyScale=1){
-    if(!s || !pptx?.ShapeType) return;
-    s.addShape(pptx.ShapeType.rect,{
-      x,y,w,h,
-      fill:{color:contrast.backdrop,transparency:Math.round(contrast.backdropTransparency*transparencyScale)},
-      line:{color:contrast.backdrop,transparency:100}
-    });
-  }
-
   /* ============================= RENDER LIBRARIES ============================= */
   function renderBhajanIndex(){
     const body=document.querySelector('#index tbody'); if(!body) return;
@@ -492,6 +479,7 @@
     const tbody=document.getElementById('sortable'); if(!tbody) return;
     const tr=document.createElement('tr');
     if(prayerBg) tr.dataset.prayerBg=prayerBg;
+    tr.dataset.includeMeaning=String(String(id).startsWith('P-') && !!includeMeaning);
     tr.innerHTML=`<td class="ws-id">${id===-1?'':escapeHtml(String(id))}</td>
       <td><input type="text" name="title" value="${escapeHtml(title||'')}" class="title-input"></td>
       <td><input type="text" name="name" value="${escapeHtml(name||'')}" class="ws-name-input" placeholder="Name"></td>
@@ -503,6 +491,10 @@
     tbody.appendChild(tr);
     tr.querySelector('.remove')?.addEventListener('click',()=>{ tr.remove(); saveWorkspace(); showToast('Removed','info',1100); });
     tr.querySelectorAll('input,select').forEach(el=>el.addEventListener('input',debounce(saveWorkspace,250)));
+    tr.querySelector('input[name="include_meaning"]')?.addEventListener('change',e=>{
+      tr.dataset.includeMeaning=String(e.target.checked);
+      saveWorkspace();
+    });
     saveWorkspace();
   }
   function makeKeySelect(selected=''){
@@ -521,7 +513,7 @@
         key:tr.querySelector('.key-select')?.value||'',
         lyrics:tr.querySelector('input[name="lyrics"]')?.value||'',
         prayerBg:tr.dataset.prayerBg||'',
-        includeMeaning:!!tr.querySelector('input[name="include_meaning"]')?.checked
+        includeMeaning:tr.dataset.includeMeaning==='true'
       }));
       sessionStorage.setItem(WORKSPACE_KEY,JSON.stringify(rows));
     }catch(e){ console.warn('[BhajanGen] saveWorkspace failed',e); }
@@ -542,7 +534,7 @@
   }
   function addPrayerByKey(key){
     const found=prayersData.find(p=>String(p.id)===String(key));
-    if(found){ addWorkspaceRow('P-'+found.id,found.title,found.lyrics,found.background||null); showToast('Prayer added','success',1000); }
+    if(found){ addWorkspaceRow('P-'+found.id,found.title,found.lyrics,found.background||null,'','','',false); showToast('Prayer added','success',1000); }
     else showToast('Prayer not found','error',1400);
   }
   function addFillerSlide(){ addWorkspaceRow(-1,'Filler Slide',''); }
@@ -595,20 +587,26 @@
     }
     return null;
   }
+  function addTextPlain(s,text,options={}){
+    const plainOptions={...options};
+    delete plainOptions.fill;
+    delete plainOptions.line;
+    delete plainOptions.outline;
+    delete plainOptions.shadow;
+    plainOptions.isTextBox=true;
+    s.addText(text,plainOptions);
+  }
   function addNextFooter(s,nextInfo,contrast=null){
     const color=contrast?.text||HEADER_COLOR;
-    s.addShape?.('rect',{x:0.15,y:FOOTER_Y-0.05,w:SLIDE_W-0.30,h:0.48,
-      fill:{color:(contrast?.backdrop||'000000'),transparency:(contrast?.backdropTransparency||45)},
-      line:{color:(contrast?.backdrop||'000000'),transparency:100}});
     // Left: Next
-    s.addText('Next',{x:0.3,y:FOOTER_Y,w:1.2,h:0.4,fontFace:'Calibri',fontSize:NEXT_LABEL_FONT_SIZE,color:color,align:'left'});
+    addTextPlain(s,'Next',{x:0.3,y:FOOTER_Y,w:1.2,h:0.4,fontFace:'Calibri',fontSize:NEXT_LABEL_FONT_SIZE,color:color,align:'left'});
     // Center: Title
     if(nextInfo?.title){
-      s.addText(nextInfo.title,{x:SLIDE_W/2 - 2.2,y:FOOTER_Y,w:4.4,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'center'});
+      addTextPlain(s,nextInfo.title,{x:SLIDE_W/2 - 2.2,y:FOOTER_Y,w:4.4,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'center'});
     }
     // Right: Name
     if(nextInfo?.name){
-      s.addText(nextInfo.name,{x:SLIDE_W - 2.3,y:FOOTER_Y,w:2.0,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'right'});
+      addTextPlain(s,nextInfo.name,{x:SLIDE_W - 2.3,y:FOOTER_Y,w:2.0,h:0.4,fontFace:'Calibri',fontSize:NEXT_TITLE_FONT_SIZE,color:color,align:'right'});
     }
   }
 
@@ -659,10 +657,8 @@
         const contrast=await getAdaptiveTextColor(bg);
         const centerY=SLIDE_H/2, titleMid=centerY-CENTER_OFFSET, subMid=centerY+CENTER_OFFSET;
         const titleY=titleMid-(TITLE_BOX_HEIGHT/2), subY=subMid-(SUBTITLE_BOX_HEIGHT/2);
-        addAdaptiveBackdrop(pptx,s,0.45,titleY,SLIDE_W-0.9,TITLE_BOX_HEIGHT,contrast,0.55);
-        addAdaptiveBackdrop(pptx,s,0.75,subY,SLIDE_W-1.5,SUBTITLE_BOX_HEIGHT,contrast,0.55);
-        s.addText(slideTitle,{x:0,y:titleY,w:SLIDE_W,h:TITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:TITLE_FONT_SIZE,bold:true,color:contrast.text});
-        s.addText(subtitle,{x:0,y:subY,w:SLIDE_W,h:SUBTITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:SUBTITLE_FONT_SIZE,bold:true,color:contrast.text});
+        addTextPlain(s,slideTitle,{x:0,y:titleY,w:SLIDE_W,h:TITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:TITLE_FONT_SIZE,bold:true,color:contrast.text});
+        addTextPlain(s,subtitle,{x:0,y:subY,w:SLIDE_W,h:SUBTITLE_BOX_HEIGHT,align:'center',valign:'middle',fontFace:'Calibri',fontSize:SUBTITLE_FONT_SIZE,bold:true,color:contrast.text});
       }catch(err){ console.error('[BhajanGen] title slide error',err); }
       progress++; updateProgress(progress,totalSlides);
 
@@ -680,7 +676,6 @@
             const s=pptx.addSlide();
             const bg=pickSlideBackgroundDataUrl(true); if(bg) s.addImage({data:bg,x:0,y:0,w:'100%',h:'100%'});
             const contrast=await getAdaptiveTextColor(bg);
-            addAdaptiveBackdrop(pptx,s,0.55,2.15,8.9,1.0,contrast,0.50);
             const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo,contrast);
             progress++; updateProgress(progress,totalSlides); await maybeYield(); continue;
           }
@@ -702,25 +697,22 @@
               if(rowTitle){
                 const headerText = parts.length > 1 ? `${rowTitle} (${p+1}/${parts.length})` : rowTitle;
                 const fit=fitFontOneLineBinary(headerText,'Calibri',SLIDE_W,HEADER_START_PT_PRAYER,HEADER_MIN_PT_PRAYER,{bold:true});
-                addAdaptiveBackdrop(pptx,s,0.25,HEADER_TOP_Y,SLIDE_W-0.5,HEADER_H,contrast,0.62);
-                s.addText(headerText,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:contrast.text});
+                addTextPlain(s,headerText,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:fit.pt,bold:true,color:contrast.text});
               }
 
               const seg=parts[p]||'';
-              const includeMeaning=!!tr.querySelector('input[name="include_meaning"]')?.checked;
+              const includeMeaning=tr.dataset.includeMeaning==='true';
               const showTranslation=includeMeaning && p===parts.length-1 && !!translation;
               const lyricsHeight=showTranslation?1.95:PR_LYRICS_H;
               const lyricsFit=fitFontBinary(seg,'Calibri',PR_LYRICS_W,lyricsHeight,PR_LYRICS_BASE_PT,PR_LYRICS_MIN_PT,{lineGap:1.22});
-              addAdaptiveBackdrop(pptx,s,0.35,PR_LYRICS_Y,PR_LYRICS_W-0.70,lyricsHeight,contrast,0.42);
-              s.addText(seg,{x:PR_LYRICS_X,y:PR_LYRICS_Y,w:PR_LYRICS_W,h:lyricsHeight,align:'center',valign:'top',fontFace:'Calibri',fontSize:lyricsFit.pt,color:contrast.text,wrap:true});
+              addTextPlain(s,seg,{x:PR_LYRICS_X,y:PR_LYRICS_Y,w:PR_LYRICS_W,h:lyricsHeight,align:'center',valign:'top',fontFace:'Calibri',fontSize:lyricsFit.pt,color:contrast.text,wrap:true});
 
               if(showTranslation){
                 const transPt=Math.max(14, lyricsFit.pt-14);
                 const transY=PR_LYRICS_Y+lyricsHeight+NOTE_Y_GAP;
                 const transH=Math.max(0.65,PR_LYRICS_Y+PR_LYRICS_H-transY);
                 const transFit=fitFontBinary('('+translation+')','Calibri',PR_LYRICS_W,transH,transPt,12,{lineGap:1.18,italic:true});
-                addAdaptiveBackdrop(pptx,s,0.45,transY,PR_LYRICS_W-0.90,transH,contrast,0.48);
-                s.addText('('+translation+')',{x:PR_LYRICS_X,y:transY,w:PR_LYRICS_W,h:transH,align:'center',fontFace:'Calibri',fontSize:transFit.pt,color:contrast.text,italic:true,wrap:true});
+                addTextPlain(s,'('+translation+')',{x:PR_LYRICS_X,y:transY,w:PR_LYRICS_W,h:transH,align:'center',fontFace:'Calibri',fontSize:transFit.pt,color:contrast.text,italic:true,wrap:true});
               }
 
               // Only show "Next" on the final slide of this prayer
@@ -746,21 +738,18 @@
           const headerStr=[rowTitle,personName||'',gender?`(${gender})`:'',keyField||''].filter(Boolean).join(' ');
           const headerFit=fitFontOneLineBinary(headerStr,'Calibri',SLIDE_W,HEADER_START_PT_BHAJAN,HEADER_MIN_PT_BHAJAN,{bold:true});
           const headerRuns=buildBhajanHeaderRuns(rowTitle,personName,gender,keyField,headerFit.pt,contrast.text);
-          addAdaptiveBackdrop(pptx,s,0.25,HEADER_TOP_Y,SLIDE_W-0.5,HEADER_H,contrast,0.62);
-          s.addText(headerRuns,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',color:contrast.text});
+          addTextPlain(s,headerRuns,{x:0,y:HEADER_TOP_Y,w:SLIDE_W,h:HEADER_H,align:'center',valign:'top',fontFace:'Calibri',color:contrast.text});
 
           const {main:mRaw,note:bNote}=extractTrailingNote(workspaceLyrics||'');
           const main=formatVerses(mRaw||'');
           const mainFit=fitFontBinary(main,'Calibri',BH_LYRICS_W,BH_LYRICS_H,BH_LYRICS_BASE_PT,BH_LYRICS_MIN_PT,{lineGap:1.22});
-          addAdaptiveBackdrop(pptx,s,0.35,BH_LYRICS_Y,BH_LYRICS_W-0.70,BH_LYRICS_H,contrast,0.42);
-          s.addText(main,{x:BH_LYRICS_X,y:BH_LYRICS_Y,w:BH_LYRICS_W,h:BH_LYRICS_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:mainFit.pt,color:contrast.text,wrap:true});
+          addTextPlain(s,main,{x:BH_LYRICS_X,y:BH_LYRICS_Y,w:BH_LYRICS_W,h:BH_LYRICS_H,align:'center',valign:'top',fontFace:'Calibri',fontSize:mainFit.pt,color:contrast.text,wrap:true});
 
           if(bNote){
             const noteY=Math.min(FOOTER_Y-0.9,BH_LYRICS_Y+BH_LYRICS_H+0.25);
             const availH=Math.max(0.6,(FOOTER_Y-0.22)-noteY);
             const notePt=Math.max(14,mainFit.pt-6);
-            addAdaptiveBackdrop(pptx,s,0.45,noteY,BH_LYRICS_W-0.90,availH,contrast,0.48);
-            s.addText('('+bNote+')',{x:BH_LYRICS_X,y:noteY,w:BH_LYRICS_W,h:availH,align:'center',fontFace:'Calibri',fontSize:notePt,color:contrast.text,italic:true,wrap:true});
+            addTextPlain(s,'('+bNote+')',{x:BH_LYRICS_X,y:noteY,w:BH_LYRICS_W,h:availH,align:'center',fontFace:'Calibri',fontSize:notePt,color:contrast.text,italic:true,wrap:true});
           }
 
           const nextInfo=getNextInfo(rows,i); if(nextInfo) addNextFooter(s,nextInfo,contrast);
