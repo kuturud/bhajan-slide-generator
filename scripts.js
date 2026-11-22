@@ -21,7 +21,7 @@
   const NEXT_TITLE_FONT_SIZE=16, NEXT_LABEL_FONT_SIZE=16;
 
   // Backgrounds
-  const IMAGE_DIR='images', IMAGE_BASE='bhajan', IMAGE_EXT='.png', MAX_BG_CANDIDATES=20;
+  const IMAGE_DIR='images', IMAGE_BASE='bhajan', IMAGE_EXT='.png', MAX_BG_CANDIDATES=100;
 
   // Inline extra prayers (optional)
   const EXTRA_PRAYERS = [
@@ -249,6 +249,7 @@
   async function fetchJsonFlexible(name){
     const base=window.location.href;
     const candidates=[ new URL(name,base).href, new URL('./'+name,base).href, new URL(`${name}?v=${Date.now()}`,base).href ];
+    if(name==='bhajans.json') candidates.push(new URL('./python/bhajans_cleaned.json',base).href);
     for(const url of candidates){
       try{
         const res=await fetch(url,{cache:'no-store',headers:{'Accept':'application/json'}});
@@ -266,7 +267,7 @@
   }
 
   async function autoLoad(){
-    if(location.protocol==='file:'){ console.log('[BhajanGen] file:// skip auto fetch'); return; }
+    if(location.protocol==='file:'){ console.warn('[BhajanGen] bhajans.json/prayers.json cannot be fetched reliably from file://; serve the app over HTTP'); }
     const [b,p]=await Promise.allSettled([ fetchJsonFlexible('bhajans.json'), fetchJsonFlexible('prayers.json') ]);
     if(b.status==='fulfilled'){
       bhajansData=b.value.map(e=>({ id:e.id, name:e.name, lyrics:normalizeLyrics(e.lyrics||''), _lcName:norm(e.name), _lcLyrics:norm(e.lyrics||'') }));
@@ -333,13 +334,17 @@
     const value=document.getElementById('backgroundTheme')?.value||localStorage.getItem('bhajan_background_theme')||'default';
     return themeBackgrounds.find(theme=>theme.value===value)||null;
   }
-  function updateThemePreview(){
+  async function updateThemePreview(){
     const preview=document.getElementById('themePreview');
     const label=document.getElementById('themePreviewLabel');
     const theme=getSelectedTheme();
     const selected=theme?.data||backgroundsDataUrls[0]?.data||null;
     if(preview){
       preview.style.backgroundImage=selected?`url("${selected}")`:'none';
+      const contrast=await getAdaptiveTextColor(selected);
+      preview.style.setProperty('--preview-backdrop',contrast.backdrop);
+      preview.style.setProperty('--preview-opacity',String(contrast.backdropTransparency/100));
+      preview.style.setProperty('--preview-text','#'+contrast.text);
     }
     if(label){
       label.textContent=theme?.label||'Default (Rotating)';
@@ -483,7 +488,7 @@
   }
 
   /* ============================= WORKSPACE ============================= */
-  function addWorkspaceRow(id,title='',lyrics='',prayerBg=null,name='',gender='',key=''){
+  function addWorkspaceRow(id,title='',lyrics='',prayerBg=null,name='',gender='',key='',includeMeaning=false){
     const tbody=document.getElementById('sortable'); if(!tbody) return;
     const tr=document.createElement('tr');
     if(prayerBg) tr.dataset.prayerBg=prayerBg;
@@ -492,7 +497,7 @@
       <td><input type="text" name="name" value="${escapeHtml(name||'')}" class="ws-name-input" placeholder="Name"></td>
       <td><select name="gender"><option></option><option ${gender==='M'?'selected':''}>M</option><option ${gender==='F'?'selected':''}>F</option></select></td>
       <td>${makeKeySelect(key)}</td>
-      <td><button class="btn remove">Remove</button></td>
+      <td>${String(id).startsWith('P-') ? `<label class="meaning-toggle"><input type="checkbox" name="include_meaning" ${includeMeaning?'checked':''}> Include Meaning</label>` : ''}<button class="btn remove">Remove</button></td>
       <input type="hidden" name="bhajan_id" value="${escapeHtml(String(id))}">
       <input type="hidden" name="lyrics" value="${escapeHtml(lyrics||'')}">`;
     tbody.appendChild(tr);
@@ -515,7 +520,8 @@
         gender:tr.querySelector('select[name="gender"]')?.value||'',
         key:tr.querySelector('.key-select')?.value||'',
         lyrics:tr.querySelector('input[name="lyrics"]')?.value||'',
-        prayerBg:tr.dataset.prayerBg||''
+        prayerBg:tr.dataset.prayerBg||'',
+        includeMeaning:!!tr.querySelector('input[name="include_meaning"]')?.checked
       }));
       sessionStorage.setItem(WORKSPACE_KEY,JSON.stringify(rows));
     }catch(e){ console.warn('[BhajanGen] saveWorkspace failed',e); }
@@ -524,7 +530,7 @@
     const raw=sessionStorage.getItem(WORKSPACE_KEY); if(!raw) return;
     try{
       const arr=JSON.parse(raw); if(!Array.isArray(arr)) return;
-      for(const r of arr) addWorkspaceRow(r.id,r.title,r.lyrics,r.prayerBg||null,r.name,r.gender,r.key);
+      for(const r of arr) addWorkspaceRow(r.id,r.title,r.lyrics,r.prayerBg||null,r.name,r.gender,r.key,!!r.includeMeaning);
     }catch(e){ console.warn('[BhajanGen] restoreWorkspace failed',e); }
   }
 
@@ -623,7 +629,6 @@
 
       const slideTitle=(document.getElementById('slideTitle')?.value||'').trim()||'Central London Sai Centre';
       const subEl=document.getElementById('slideSubtitle'); const subtitle=(subEl?.value||'').trim()||formatToday(); if(subEl) subEl.value=subtitle;
-      const includeTranslation=!!document.getElementById('includePrayerTranslation')?.checked;
       const rows=Array.from(document.querySelectorAll('#sortable tr'));
 
       // Calculate total slides using canonical prayer data
@@ -702,7 +707,8 @@
               }
 
               const seg=parts[p]||'';
-              const showTranslation=includeTranslation && p===parts.length-1 && !!translation;
+              const includeMeaning=!!tr.querySelector('input[name="include_meaning"]')?.checked;
+              const showTranslation=includeMeaning && p===parts.length-1 && !!translation;
               const lyricsHeight=showTranslation?1.95:PR_LYRICS_H;
               const lyricsFit=fitFontBinary(seg,'Calibri',PR_LYRICS_W,lyricsHeight,PR_LYRICS_BASE_PT,PR_LYRICS_MIN_PT,{lineGap:1.22});
               addAdaptiveBackdrop(pptx,s,0.35,PR_LYRICS_Y,PR_LYRICS_W-0.70,lyricsHeight,contrast,0.42);
@@ -880,9 +886,7 @@
   });
   document.getElementById('textColorMode')?.addEventListener('change',e=>{
     localStorage.setItem('bhajan_text_color',e.target.value);
-  });
-  document.getElementById('includePrayerTranslation')?.addEventListener('change',e=>{
-    localStorage.setItem('bhajan_include_prayer_translation',e.target.checked?'true':'false');
+    updateThemePreview();
   });
   document.getElementById('bhajanSearch')?.addEventListener('keydown',function(e){
     if(e.key==='Enter'){
@@ -904,17 +908,13 @@
     initTheme();
     await prefetchBackgrounds();
     populateThemeSelector();
-    updateThemePreview();
-    const translationToggle=document.getElementById('includePrayerTranslation');
-    if(translationToggle){
-      translationToggle.checked=localStorage.getItem('bhajan_include_prayer_translation')==='true';
-    }
     const textColor=document.getElementById('textColorMode');
     if(textColor){
       textColor.value=localStorage.getItem('bhajan_text_color')||'auto';
     }
-    restoreWorkspace();
+    updateThemePreview();
     await autoLoad();
+    restoreWorkspace();
     renderBhajanIndex();
     renderPrayerIndex();
   });
